@@ -110,10 +110,6 @@ func (p *Postgres) Close() error {
 
 // https://www.postgresql.org/docs/9.6/static/explicit-locking.html#ADVISORY-LOCKS
 func (p *Postgres) Lock() error {
-	if p.isLocked {
-		return database.ErrLocked
-	}
-
 	aid, err := database.GenerateAdvisoryLockId(p.config.DatabaseName)
 	if err != nil {
 		return err
@@ -121,25 +117,15 @@ func (p *Postgres) Lock() error {
 
 	// This will either obtain the lock immediately and return true,
 	// or return false if the lock cannot be acquired immediately.
-	query := `SELECT pg_try_advisory_lock($1)`
-	var success bool
-	if err := p.db.QueryRow(query, aid).Scan(&success); err != nil {
+	query := `SELECT pg_advisory_lock($1)`
+	if _, err := p.db.Exec(query, aid); err != nil {
 		return &database.Error{OrigErr: err, Err: "try lock failed", Query: []byte(query)}
 	}
 
-	if success {
-		p.isLocked = true
-		return nil
-	}
-
-	return database.ErrLocked
+	return nil
 }
 
 func (p *Postgres) Unlock() error {
-	if !p.isLocked {
-		return nil
-	}
-
 	aid, err := database.GenerateAdvisoryLockId(p.config.DatabaseName)
 	if err != nil {
 		return err
@@ -149,7 +135,7 @@ func (p *Postgres) Unlock() error {
 	if _, err := p.db.Exec(query, aid); err != nil {
 		return &database.Error{OrigErr: err, Query: []byte(query)}
 	}
-	p.isLocked = false
+
 	return nil
 }
 
